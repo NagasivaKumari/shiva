@@ -16,3 +16,6 @@ env/
 
 # Make sure requirements.txt is tracked for CI
 # requirements.txt  <- removed if it existed
+
+# Node.js dependencies
+node_modules/
