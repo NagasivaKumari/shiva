@@ -4,5 +4,8 @@
   "scripts": {
     "test": "jest",
     "build": "tsc"
+  },
+  "devDependencies": {
+    "jest": "^30.2.0"
   }
 }
