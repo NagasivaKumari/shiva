@@ -1,93 +1,52 @@
-name: CI Pipeline with Deploy & Manual Rollback
+name: CI Pipeline with Deploy
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch:
-    inputs:
-      rollback_steps:
-        description: Number of commits to rewind on gh-pages (1 = previous deploy)
-        required: false
-        default: '1'
 
 jobs:
+  # ===============================
+  # Build & Test Job
+  # ===============================
   build-and-test:
-    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Run Tests
         run: pytest tests/
 
+  # ===============================
+  # Deploy Job
+  # ===============================
   deploy:
-    if: github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build-and-test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
         with:
-          persist-credentials: false
+          persist-credentials: false  # avoid using default token
+
       - name: Prepare site assets
         run: |
           mkdir -p site
           cp shiva.html site/
-          touch site/.nojekyll
+          touch site/.nojekyll  # prevents Jekyll build
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
-          publish_dir: ./site
-          publish_branch: gh-pages
+          publish_dir: ./site        # folder to deploy
+          publish_branch: gh-pages   # target branch
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_empty_commit: true
-
-  rollback-gh-pages:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Only run on manual trigger
-        run: |
-          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
-            echo "Not a manual trigger. Skipping rollback."
-            exit 0
-          fi
-
-      - name: Checkout gh-pages
-        uses: actions/checkout@v3
-        with:
-          ref: gh-pages
-          fetch-depth: 0
-
-      - name: Show recent commits
-        run: git log --oneline -n 5
-
-      - name: Perform rollback safely
-        run: |
-          steps="${{ github.event.inputs.rollback_steps }}"
-          if ! [[ "$steps" =~ ^[0-9]+$ ]] || [ "$steps" -lt 1 ]; then
-            echo "Invalid input; defaulting to 1"
-            steps=1
-          fi
-
-          total=$(git rev-list --count HEAD)
-          echo "Total commits on gh-pages: $total"
-
-          if [ "$total" -le 1 ]; then
-            echo "Only one commit exists. Nothing to rollback."
-            exit 0
-          fi
-
-          if [ "$steps" -ge "$total" ]; then
-            steps=$((total - 1))
-            echo "Adjusted rollback steps to $steps to preserve at least one commit."
-          fi
-
-          echo "Rolling back $steps commit(s)..."
-          git reset --hard HEAD~$steps
-          git push origin gh-pages --force
