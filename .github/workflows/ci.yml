@@ -1,4 +1,4 @@
-name: CI Pipeline with Deploy & Rollback
+name: CI Pipeline with Deploy & Manual Rollback
 
 on:
   push:
@@ -13,29 +13,20 @@ on:
         default: '1'
 
 jobs:
-  # ===============================
-  # Build & Test Job
-  # ===============================
   build-and-test:
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
-
       - name: Install dependencies
         run: pip install -r requirements.txt
-
       - name: Run Tests
         run: pytest tests/
 
-  # ===============================
-  # Deploy Job
-  # ===============================
   deploy:
     if: github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build-and-test
@@ -44,13 +35,11 @@ jobs:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
-
       - name: Prepare site assets
         run: |
           mkdir -p site
           cp shiva.html site/
           touch site/.nojekyll
-
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -59,14 +48,17 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_empty_commit: true
 
-  # ===============================
-  # Rollback Job 
-  # ===============================
   rollback-gh-pages:
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout gh-pages branch
+      - name: Only run on manual trigger
+        run: |
+          if [ "${GITHUB_EVENT_NAME}" != "workflow_dispatch" ]; then
+            echo "Not a manual trigger. Skipping rollback."
+            exit 0
+          fi
+
+      - name: Checkout gh-pages
         uses: actions/checkout@v3
         with:
           ref: gh-pages
@@ -79,14 +71,12 @@ jobs:
         run: |
           steps="${{ github.event.inputs.rollback_steps }}"
           if ! [[ "$steps" =~ ^[0-9]+$ ]] || [ "$steps" -lt 1 ]; then
-            echo "Invalid or empty rollback_steps input; defaulting to 1"
+            echo "Invalid input; defaulting to 1"
             steps=1
           fi
 
-          echo "Requested rollback steps = $steps"
-
           total=$(git rev-list --count HEAD)
-          echo "Total commits on gh-pages = $total"
+          echo "Total commits on gh-pages: $total"
 
           if [ "$total" -le 1 ]; then
             echo "Only one commit exists. Nothing to rollback."
@@ -95,9 +85,9 @@ jobs:
 
           if [ "$steps" -ge "$total" ]; then
             steps=$((total - 1))
-            echo "Adjusting rollback steps to $steps to preserve at least one commit."
+            echo "Adjusted rollback steps to $steps to preserve at least one commit."
           fi
 
-          echo "Rolling back $steps commit(s)"
+          echo "Rolling back $steps commit(s)..."
           git reset --hard HEAD~$steps
           git push origin gh-pages --force
