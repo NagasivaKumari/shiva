@@ -70,8 +70,6 @@ jobs:
   # Rollback Job
   # ===============================
   rollback-gh-pages:
-    # Only runs on manual trigger
-    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
