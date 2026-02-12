@@ -9,25 +9,30 @@ on:
         default: '1'
 
 jobs:
-  rollback-gh-pages:
+  rollback:
+    name: Rollback gh-pages
     runs-on: ubuntu-latest
+
     steps:
-      - name: Checkout gh-pages branch
+      - name: Checkout gh-pages branch (full history)
         uses: actions/checkout@v3
         with:
           ref: gh-pages
           fetch-depth: 0
 
-      - name: Show recent commits
+      - name: Show recent commits before rollback
         run: git log --oneline -n 5
 
-      - name: Perform rollback safely with revert
+      - name: Perform rollback with git revert
         run: |
           steps="${{ github.event.inputs.rollback_steps }}"
+          
           # Default to 1 if invalid
           if ! [[ "$steps" =~ ^[0-9]+$ ]] || [ "$steps" -lt 1 ]; then
             steps=1
           fi
+
+          echo "Requested rollback steps: $steps"
 
           total=$(git rev-list --count HEAD)
           echo "Total commits on gh-pages: $total"
@@ -42,12 +47,16 @@ jobs:
             echo "Adjusted rollback steps to $steps to preserve at least one commit."
           fi
 
-          echo "Reverting the last $steps commit(s)..."
+          # Get the commit SHAs to revert, newest first
+          commits=$(git rev-list -n $steps HEAD)
 
-          # Revert the last N commits
-          for i in $(seq 1 $steps); do
-            git revert --no-edit HEAD || true
+          # Revert each commit one by one
+          for commit in $commits; do
+            git revert --no-edit $commit
           done
 
-          # Push the new rollback commit(s)
+          echo "Pushing rollback commits to gh-pages..."
           git push origin gh-pages
+
+      - name: Show recent commits after rollback
+        run: git log --oneline -n 5
