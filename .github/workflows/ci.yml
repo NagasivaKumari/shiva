@@ -5,9 +5,16 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      rollback_steps:
+        description: Number of commits to rewind on gh-pages (1 = previous deploy)
+        required: false
+        default: '1'
 
 jobs:
   build-and-test:
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -20,4 +27,58 @@ jobs:
         run: pip install -r requirements.txt
       - name: Run Tests
         run: pytest tests/
+
+  deploy:
+    if: github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main'
+    needs: build-and-test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          persist-credentials: false
+      - name: Prepare site assets
+        run: |
+          mkdir -p site
+          cp shiva.html site/
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          publish_dir: ./site
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          allow_empty_commit: true
+
+  rollback-gh-pages:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Fetch gh-pages branch
+        run: git fetch origin gh-pages
+      - name: Compute rollback target
+        id: compute_target
+        run: |
+          steps=${{ github.event.inputs.rollback_steps || '1' }}
+          if ! [[ "$steps" =~ ^[0-9]+$ ]] || [ "$steps" -lt 1 ]; then
+            echo "rollback_steps must be a positive integer" >&2
+            exit 1
+          fi
+          target_ref="origin/gh-pages"
+          if [ "$steps" != "0" ]; then
+            target_ref="origin/gh-pages~$steps"
+          fi
+          target=$(git rev-parse "$target_ref" 2>/dev/null)
+          if [ -z "${target}" ]; then
+            echo "Unable to resolve ${target_ref}. The branch might not exist or you requested too many steps back." >&2
+            exit 1
+          fi
+          echo "target=$target" >> "$GITHUB_OUTPUT"
+      - name: Push rollback
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git push origin "${{ steps.compute_target.outputs.target }}:gh-pages" --force
 
