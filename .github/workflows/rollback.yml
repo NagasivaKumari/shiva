@@ -22,7 +22,12 @@ jobs:
 
       - name: Show recent commits before rollback
         run: git log --oneline -n 5
-
+        
+      - name: Configure Git Identity
+        run: |
+           git config user.name "Github Actions"
+           git config user.email "actions@github.com"
+      
       - name: Perform rollback with git revert
         run: |
           steps="${{ github.event.inputs.rollback_steps }}"
