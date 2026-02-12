@@ -1,10 +1,12 @@
 name: CI Pipeline
 
 on:
+  # Triggers deploy on push to main and PRs targeting main
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  # Manual trigger for rollback
   workflow_dispatch:
     inputs:
       rollback_steps:
@@ -13,51 +15,80 @@ on:
         default: '1'
 
 jobs:
+  # ===============================
+  # Build & Test Job
+  # ===============================
   build-and-test:
+    # Skip for manual rollback triggers
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Run Tests
         run: pytest tests/
 
+  # ===============================
+  # Deploy Job
+  # ===============================
   deploy:
+    # Only run on push to main, not manual rollback
     if: github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main'
     needs: build-and-test
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
+        with:
+          persist-credentials: false  # prevent using default token
+
       - name: Prepare site assets
         run: |
           mkdir -p site
           cp shiva.html site/
+          touch site/.nojekyll   # prevents Jekyll build
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
-          publish_dir: ./site
-          publish_branch: gh-pages
+          publish_dir: ./site        # folder to deploy
+          publish_branch: gh-pages   # target branch
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_empty_commit: true
-          force_orphan: true   # ensures branch protection doesn't block push
+          force_orphan: true         # creates branch if it doesn’t exist
 
+  # ===============================
+  # Rollback Job
+  # ===============================
   rollback-gh-pages:
+    # Only runs on manual trigger
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 0
+          fetch-depth: 0  # fetch full history for rollback
+
+      - name: Check if gh-pages exists
+        run: |
+          if ! git ls-remote --exit-code origin gh-pages; then
+            echo "gh-pages branch does not exist. Rollback cannot proceed."
+            exit 0
+          fi
+
       - name: Fetch gh-pages branch
         run: git fetch origin gh-pages
+
       - name: Compute rollback target
         id: compute_target
         run: |
@@ -76,6 +107,7 @@ jobs:
             exit 1
           fi
           echo "target=$target" >> "$GITHUB_OUTPUT"
+
       - name: Push rollback
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
