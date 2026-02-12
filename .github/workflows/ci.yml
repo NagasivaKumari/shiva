@@ -1,4 +1,4 @@
-name: CI Pipeline
+name: CI Pipeline with Deploy & Rollback
 
 on:
   push:
@@ -53,7 +53,7 @@ jobs:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_empty_commit: true
-          # Removed force_orphan to preserve history
+          # Do NOT use force_orphan, preserve history
 
   # ===============================
   # Rollback
@@ -61,6 +61,7 @@ jobs:
   rollback-gh-pages:
     runs-on: ubuntu-latest
     steps:
+      # Skip if not manual trigger
       - name: Stop if not manual trigger
         if: ${{ github.event_name != 'workflow_dispatch' }}
         run: |
@@ -73,8 +74,8 @@ jobs:
           ref: gh-pages
           fetch-depth: 0
 
-      - name: Show commit history
-        run: git log --oneline
+      - name: Show recent commits
+        run: git log --oneline -n 5
 
       - name: Perform rollback safely
         run: |
@@ -82,19 +83,19 @@ jobs:
           if [ -z "$steps" ]; then
             steps=1
           fi
-          echo "Rollback steps = $steps"
+          echo "Requested rollback steps = $steps"
 
           total=$(git rev-list --count HEAD)
-          echo "Total commits in gh-pages = $total"
+          echo "Total commits on gh-pages = $total"
 
-          if [ "$total" <= 1 ]; then
-            echo "Only one commit on gh-pages. Cannot rollback further."
+          if [ "$total" -le 1 ]; then
+            echo "Only one commit exists. Nothing to rollback."
             exit 0
           fi
 
           if [ "$total" -le "$steps" ]; then
             steps=$((total - 1))
-            echo "Adjusting rollback steps to $steps to avoid removing all history."
+            echo "Adjusting rollback steps to $steps to preserve at least one commit."
           fi
 
           echo "Rolling back $steps commit(s)"
