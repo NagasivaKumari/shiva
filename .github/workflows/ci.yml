@@ -14,7 +14,7 @@ on:
 
 jobs:
   # ===============================
-  # Build & Test
+  # Build & Test Job
   # ===============================
   build-and-test:
     if: github.event_name != 'workflow_dispatch'
@@ -31,7 +31,7 @@ jobs:
         run: pytest tests/
 
   # ===============================
-  # Deploy
+  # Deploy Job
   # ===============================
   deploy:
     if: github.event_name != 'workflow_dispatch' && github.ref == 'refs/heads/main'
@@ -53,22 +53,15 @@ jobs:
           publish_branch: gh-pages
           github_token: ${{ secrets.GITHUB_TOKEN }}
           allow_empty_commit: true
-          # Do NOT use force_orphan, preserve history
 
   # ===============================
-  # Rollback
+  # Rollback Job (Manual Only)
   # ===============================
   rollback-gh-pages:
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
-      # Skip if not manual trigger
-      - name: Stop if not manual trigger
-        if: ${{ github.event_name != 'workflow_dispatch' }}
-        run: |
-          echo "Not a manual trigger. Skipping rollback."
-          exit 0
-
-      - name: Checkout gh-pages
+      - name: Checkout gh-pages branch
         uses: actions/checkout@v4
         with:
           ref: gh-pages
