@@ -21,12 +21,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+
       - name: Install dependencies
         run: pip install -r requirements.txt
+
       - name: Run Tests
         run: pytest tests/
 
@@ -41,11 +44,13 @@ jobs:
       - uses: actions/checkout@v3
         with:
           persist-credentials: false
+
       - name: Prepare site assets
         run: |
           mkdir -p site
           cp shiva.html site/
           touch site/.nojekyll
+
       - name: Deploy to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
         with:
@@ -55,14 +60,14 @@ jobs:
           allow_empty_commit: true
 
   # ===============================
-  # Rollback Job (Manual Only)
+  # Rollback Job 
   # ===============================
   rollback-gh-pages:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
+        uses: actions/checkout@v3
         with:
           ref: gh-pages
           fetch-depth: 0
@@ -73,9 +78,11 @@ jobs:
       - name: Perform rollback safely
         run: |
           steps="${{ github.event.inputs.rollback_steps }}"
-          if [ -z "$steps" ]; then
+          if ! [[ "$steps" =~ ^[0-9]+$ ]] || [ "$steps" -lt 1 ]; then
+            echo "Invalid or empty rollback_steps input; defaulting to 1"
             steps=1
           fi
+
           echo "Requested rollback steps = $steps"
 
           total=$(git rev-list --count HEAD)
@@ -86,7 +93,7 @@ jobs:
             exit 0
           fi
 
-          if [ "$total" -le "$steps" ]; then
+          if [ "$steps" -ge "$total" ]; then
             steps=$((total - 1))
             echo "Adjusting rollback steps to $steps to preserve at least one commit."
           fi
