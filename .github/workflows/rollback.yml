@@ -55,18 +55,19 @@ jobs:
           # Get the commit SHAs to revert, newest first
           commits=$(git rev-list -n $steps HEAD)
 
-          # Revert each commit one by one (force empty commit if needed)
-          for commit in $commits; do
-          echo "Rolling back commit $commit..."
-          git revert --no-edit --allow-empty $commit || {
-          echo "Skipping $commit due to conflict"
-          git revert --abort 2>/dev/null || true
-           }
-             done
+          # Revert each commit safely and push
+            for commit in $commits; do
+            echo "Rolling back commit $commit..."
+            git revert --no-edit --allow-empty $commit || {
+            echo "Skipping $commit due to conflict"
+            git revert --abort 2>/dev/null || true
+              }
+                done
+                 
+          # Push rollback commits (force push for lab simplicity)
+            git push origin gh-pages --force
+ 
 
-          echo "Pushing rollback commits to gh-pages..."
-          git push origin gh-pages
 
-
-      - name: Show recent commits after rollback
-        run: git log --oneline -n 5
+          - name: Show recent commits after rollback
+            run: git log --oneline -n 5
